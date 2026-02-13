@@ -79,17 +79,16 @@ def filter_markets(markets: list) -> tuple:
         # Check 2: Has valid token IDs
         yes_token_id = market.get('yes_token_id')
         no_token_id = market.get('no_token_id')
-        if not yes_token_id or not no_token_id or yes_token_id == '' or no_token_id == '':
+        if not yes_token_id or not no_token_id:
             skip_counts['no_token_ids'] += 1
             continue
         
-        # Check 3: Has liquidity
+        # Check 3: Has liquidity (convert to float to check if it's effectively non-zero)
         liquidity = market.get('liquidity')
-        if liquidity is None or liquidity == 0 or liquidity == "0" or liquidity == '':
+        if not liquidity:
             skip_counts['no_liquidity'] += 1
             continue
         
-        # Convert liquidity to float to check if it's effectively zero
         try:
             liq_val = float(liquidity)
             if liq_val == 0:
