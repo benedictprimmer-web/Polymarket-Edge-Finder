@@ -42,20 +42,45 @@ def extract_token_ids(market: dict) -> tuple:
     
     # Try clobTokenIds first (array format)
     clob_token_ids = market.get('clobTokenIds', [])
+    
+    # Check if clobTokenIds is a JSON string and parse it
+    if isinstance(clob_token_ids, str):
+        try:
+            clob_token_ids = json.loads(clob_token_ids)
+        except json.JSONDecodeError:
+            logger.debug(f"Failed to parse clobTokenIds as JSON: {clob_token_ids[:100]}")
+            clob_token_ids = []
+    
     if clob_token_ids and len(clob_token_ids) >= 2:
         yes_token_id = clob_token_ids[0]
         no_token_id = clob_token_ids[1]
-        return yes_token_id, no_token_id
+        
+        # Validate token IDs are not garbage (should be long strings)
+        if yes_token_id and len(str(yes_token_id)) > 10 and no_token_id and len(str(no_token_id)) > 10:
+            return yes_token_id, no_token_id
+        else:
+            # Invalid token IDs, reset and try tokens field
+            yes_token_id = None
+            no_token_id = None
     
     # Try tokens array (object format with outcome field)
     tokens = market.get('tokens', [])
+    
+    # Check if tokens is a JSON string and parse it
+    if isinstance(tokens, str):
+        try:
+            tokens = json.loads(tokens)
+        except json.JSONDecodeError:
+            logger.debug(f"Failed to parse tokens as JSON: {tokens[:100]}")
+            tokens = []
+    
     for token in tokens:
         outcome = token.get('outcome', '').lower()
         token_id = token.get('token_id') or token.get('tokenId')
         
-        if outcome == 'yes' and token_id:
+        if outcome == 'yes' and token_id and len(str(token_id)) > 10:
             yes_token_id = token_id
-        elif outcome == 'no' and token_id:
+        elif outcome == 'no' and token_id and len(str(token_id)) > 10:
             no_token_id = token_id
     
     return yes_token_id, no_token_id
@@ -95,19 +120,39 @@ def fetch_all_markets(client: PolymarketClient, active_only: bool = True) -> lis
             # Extract token IDs
             yes_token_id, no_token_id = extract_token_ids(market)
             
+            # Parse outcomes if it's a JSON string
+            outcomes = market.get('outcomes', [])
+            if isinstance(outcomes, str):
+                try:
+                    outcomes = json.loads(outcomes)
+                except json.JSONDecodeError:
+                    logger.debug(f"Failed to parse outcomes as JSON: {outcomes[:100]}")
+                    outcomes = []
+            
+            # Parse tags if it's a JSON string
+            tags = market.get('tags', [])
+            if isinstance(tags, str):
+                try:
+                    tags = json.loads(tags)
+                except json.JSONDecodeError:
+                    logger.debug(f"Failed to parse tags as JSON: {tags[:100]}")
+                    tags = []
+            
             # Build market data structure
             market_data = {
                 'question': market.get('question'),
                 'market_id': market.get('id') if market.get('id') is not None else market.get('conditionId'),
-                'outcomes': market.get('outcomes', []),
+                'outcomes': outcomes,
                 'yes_token_id': yes_token_id,
                 'no_token_id': no_token_id,
                 'ending_time': (market.get('end_date_iso') if market.get('end_date_iso') is not None 
                                else market.get('endDate') if market.get('endDate') is not None 
                                else market.get('ending_time')),
+                'end_date_iso': market.get('end_date_iso'),
                 'category': market.get('category', 'unknown'),
-                'tags': market.get('tags', []),
+                'tags': tags,
                 'state': 'closed' if market.get('closed', False) else 'active',
+                'closed': market.get('closed', False),
                 'volume': market.get('volume'),
                 'liquidity': market.get('liquidity'),
                 'url': f"https://polymarket.com/event/{market.get('slug', market.get('id', ''))}",

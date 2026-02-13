@@ -53,7 +53,9 @@ def filter_markets(markets: list) -> tuple:
     Criteria:
     1. Not closed (state != 'closed' or closed field is not True)
     2. Has valid token IDs (yes_token_id and no_token_id are present and not empty)
-    3. Has liquidity (liquidity is present, not null, not zero, and not "0")
+    3. Token IDs are valid-looking (long numeric strings, not garbage like "[" or '"')
+    4. Market hasn't ended yet (end_date_iso is in the future)
+    5. Has liquidity (liquidity is present, not null, not zero, and not "0")
     
     Args:
         markets: List of market dictionaries
@@ -83,7 +85,26 @@ def filter_markets(markets: list) -> tuple:
             skip_counts['no_token_ids'] += 1
             continue
         
-        # Check 3: Has liquidity (convert to float to check if it's effectively non-zero)
+        # Check 3: Token IDs are valid-looking (not garbage like "[" or '"')
+        # Real Polymarket token IDs are long numeric strings (70+ characters)
+        # Reject garbage values like "[", '"', or other short strings
+        if len(str(yes_token_id)) < 10 or len(str(no_token_id)) < 10:
+            skip_counts['no_token_ids'] += 1
+            continue
+        
+        # Check 4: Market hasn't ended yet
+        ending_time = market.get('ending_time') or market.get('end_date_iso')
+        if ending_time:
+            try:
+                # Parse the ISO date string
+                end_dt = datetime.fromisoformat(ending_time.replace('Z', '+00:00'))
+                if end_dt < datetime.now(timezone.utc):
+                    skip_counts['closed'] += 1  # Count as "closed" since they've ended
+                    continue
+            except (ValueError, TypeError):
+                pass  # If we can't parse the date, don't skip
+        
+        # Check 5: Has liquidity (convert to float to check if it's effectively non-zero)
         liquidity = market.get('liquidity')
         if not liquidity:
             skip_counts['no_liquidity'] += 1
