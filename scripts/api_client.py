@@ -255,6 +255,7 @@ class PolymarketClient:
             Price history dictionary or None on error
         """
         url = f"{self.CLOB_API_BASE}/prices-history"
+        # Note: The API expects 'market' as the parameter name, even though we pass a token_id value
         params = {"market": token_id, "interval": interval, "fidelity": fidelity}
         logger.debug(f"Fetching price history for token: {token_id}")
         

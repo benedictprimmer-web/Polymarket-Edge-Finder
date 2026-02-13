@@ -216,8 +216,14 @@ def main():
                 logger.info("\n💰 Sample prices (first 3):")
                 for i, price in enumerate(live_prices[:3], 1):
                     logger.info(f"{i}. {price['question'][:50]}...")
-                    logger.info(f"   YES mid: ${price['yes_mid_price']:.4f}" if price['yes_mid_price'] else "   YES mid: N/A")
-                    logger.info(f"   NO mid:  ${price['no_mid_price']:.4f}" if price['no_mid_price'] else "   NO mid:  N/A")
+                    if price['yes_mid_price'] is not None:
+                        logger.info(f"   YES mid: ${price['yes_mid_price']:.4f}")
+                    else:
+                        logger.info("   YES mid: N/A")
+                    if price['no_mid_price'] is not None:
+                        logger.info(f"   NO mid:  ${price['no_mid_price']:.4f}")
+                    else:
+                        logger.info("   NO mid:  N/A")
         else:
             logger.warning("❌ No live prices collected.")
             

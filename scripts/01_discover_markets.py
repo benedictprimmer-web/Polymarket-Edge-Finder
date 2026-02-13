@@ -105,7 +105,7 @@ def fetch_all_markets(client: PolymarketClient, active_only: bool = True) -> lis
                 'ending_time': market.get('end_date_iso') or market.get('endDate') or market.get('ending_time'),
                 'category': market.get('category', 'unknown'),
                 'tags': market.get('tags', []),
-                'state': market.get('closed', False) and 'closed' or 'active',
+                'state': 'closed' if market.get('closed', False) else 'active',
                 'volume': market.get('volume'),
                 'liquidity': market.get('liquidity'),
                 'url': f"https://polymarket.com/event/{market.get('slug', market.get('id', ''))}",
