@@ -6,3 +6,5 @@ pyarrow==13.0.0
 python-dotenv==1.0.0
 click==8.1.0
 jupyter==1.0.0
+tenacity==8.2.3
+ratelimit==2.2.1
