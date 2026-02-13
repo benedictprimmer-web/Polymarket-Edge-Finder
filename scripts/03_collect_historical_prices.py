@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import logging
+import argparse
 from datetime import datetime, timezone
 from api_client import PolymarketClient
 
@@ -45,14 +46,72 @@ def load_markets():
         sys.exit(1)
 
 
-def collect_historical_prices(client: PolymarketClient, markets: list, max_markets: int = None) -> dict:
+def filter_markets(markets: list) -> tuple:
+    """
+    Filter markets to only include active markets with liquidity and valid token IDs.
+    
+    Criteria:
+    1. Not closed (state != 'closed' or closed field is not True)
+    2. Has valid token IDs (yes_token_id and no_token_id are present and not empty)
+    3. Has liquidity (liquidity is present, not null, not zero, and not "0")
+    
+    Args:
+        markets: List of market dictionaries
+        
+    Returns:
+        Tuple of (filtered_markets, skip_counts) where skip_counts is a dict with reasons
+    """
+    filtered = []
+    skip_counts = {
+        'closed': 0,
+        'no_token_ids': 0,
+        'no_liquidity': 0
+    }
+    
+    for market in markets:
+        # Check 1: Not closed
+        state = market.get('state', '').lower()
+        closed = market.get('closed', False)
+        if state == 'closed' or closed:
+            skip_counts['closed'] += 1
+            continue
+        
+        # Check 2: Has valid token IDs
+        yes_token_id = market.get('yes_token_id')
+        no_token_id = market.get('no_token_id')
+        if not yes_token_id or not no_token_id or yes_token_id == '' or no_token_id == '':
+            skip_counts['no_token_ids'] += 1
+            continue
+        
+        # Check 3: Has liquidity
+        liquidity = market.get('liquidity')
+        if liquidity is None or liquidity == 0 or liquidity == "0" or liquidity == '':
+            skip_counts['no_liquidity'] += 1
+            continue
+        
+        # Convert liquidity to float to check if it's effectively zero
+        try:
+            liq_val = float(liquidity)
+            if liq_val == 0:
+                skip_counts['no_liquidity'] += 1
+                continue
+        except (ValueError, TypeError):
+            skip_counts['no_liquidity'] += 1
+            continue
+        
+        # Market passed all filters
+        filtered.append(market)
+    
+    return filtered, skip_counts
+
+
+def collect_historical_prices(client: PolymarketClient, markets: list) -> dict:
     """
     Collect historical price data for markets using CLOB API.
     
     Args:
         client: PolymarketClient instance
         markets: List of market dictionaries from Script 01
-        max_markets: Optional limit on number of markets to process (for testing)
         
     Returns:
         Dictionary mapping market_id to historical price data
@@ -60,12 +119,7 @@ def collect_historical_prices(client: PolymarketClient, markets: list, max_marke
     historical_data = {}
     timestamp = datetime.now(timezone.utc).isoformat()
     
-    # Limit markets if specified
-    if max_markets:
-        markets = markets[:max_markets]
-        logger.info(f"🔍 Collecting historical prices for {len(markets)} markets (limited to {max_markets})...")
-    else:
-        logger.info(f"🔍 Collecting historical prices for {len(markets)} markets...")
+    logger.info(f"🔍 Collecting historical prices for {len(markets)} markets...")
     
     for i, market in enumerate(markets, 1):
         market_id = market.get('market_id')
@@ -75,7 +129,7 @@ def collect_historical_prices(client: PolymarketClient, markets: list, max_marke
         
         logger.info(f"[{i}/{len(markets)}] {question[:60]}...")
         
-        # Skip markets without token IDs
+        # Skip markets without token IDs (should not happen after filtering, but defensive check)
         if not yes_token_id or not no_token_id:
             logger.warning(f"  ⚠️  Skipping: Missing token IDs")
             continue
@@ -149,20 +203,52 @@ def main():
     """
     Main function to collect and save historical prices.
     """
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description='Collect historical prices for Polymarket markets',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        '--limit',
+        type=int,
+        default=None,
+        help='Limit the number of markets to process (useful for testing)'
+    )
+    args = parser.parse_args()
+    
     try:
         # Load markets from Script 01
-        markets = load_markets()
+        all_markets = load_markets()
         
-        # Initialize API client with slightly longer rate limit for historical data
-        client = PolymarketClient(rate_limit_delay=0.5)
+        # Filter markets to only include active ones with liquidity and token IDs
+        markets, skip_counts = filter_markets(all_markets)
+        
+        # Log filtering results
+        logger.info("\n📊 Market Filtering Summary:")
+        logger.info(f"  Total markets loaded: {len(all_markets)}")
+        logger.info(f"  Markets passed filter: {len(markets)}")
+        logger.info(f"  Markets skipped: {len(all_markets) - len(markets)}")
+        logger.info(f"    - Closed markets: {skip_counts['closed']}")
+        logger.info(f"    - Markets with no token IDs: {skip_counts['no_token_ids']}")
+        logger.info(f"    - Markets with no liquidity: {skip_counts['no_liquidity']}")
+        
+        # Apply limit if specified
+        if args.limit and args.limit > 0:
+            markets = markets[:args.limit]
+            logger.info(f"\n🔢 Limiting to first {args.limit} markets for processing")
+        
+        if not markets:
+            logger.warning("❌ No markets to process after filtering.")
+            sys.exit(1)
+        
+        # Initialize API client with reduced rate limit
+        client = PolymarketClient(rate_limit_delay=0.3)
         
         logger.info("\n⚠️  Note: Historical price collection can take a while for many markets.")
         logger.info("The CLOB API may not have historical data for all markets.")
         logger.info("New markets may have limited or no historical data.\n")
         
         # Collect historical prices
-        # For testing, you can limit the number of markets:
-        # historical_data = collect_historical_prices(client, markets, max_markets=10)
         historical_data = collect_historical_prices(client, markets)
         
         if historical_data:
