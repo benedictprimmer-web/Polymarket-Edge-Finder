@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import logging
+import argparse
 from datetime import datetime, timezone
 from api_client import PolymarketClient
 
@@ -43,6 +44,64 @@ def load_markets():
     except Exception as e:
         logger.error(f"❌ Error loading markets: {e}")
         sys.exit(1)
+
+
+def filter_markets(markets: list) -> tuple:
+    """
+    Filter markets to only include active markets with liquidity and valid token IDs.
+    
+    Criteria:
+    1. Not closed (state != 'closed' or closed field is not True)
+    2. Has valid token IDs (yes_token_id and no_token_id are present and not empty)
+    3. Has liquidity (liquidity is present, not null, not zero, and not "0")
+    
+    Args:
+        markets: List of market dictionaries
+        
+    Returns:
+        Tuple of (filtered_markets, skip_counts) where skip_counts is a dict with reasons
+    """
+    filtered = []
+    skip_counts = {
+        'closed': 0,
+        'no_token_ids': 0,
+        'no_liquidity': 0
+    }
+    
+    for market in markets:
+        # Check 1: Not closed
+        state = market.get('state', '').lower()
+        closed = market.get('closed', False)
+        if state == 'closed' or closed:
+            skip_counts['closed'] += 1
+            continue
+        
+        # Check 2: Has valid token IDs
+        yes_token_id = market.get('yes_token_id')
+        no_token_id = market.get('no_token_id')
+        if not yes_token_id or not no_token_id:
+            skip_counts['no_token_ids'] += 1
+            continue
+        
+        # Check 3: Has liquidity (convert to float to check if it's effectively non-zero)
+        liquidity = market.get('liquidity')
+        if not liquidity:
+            skip_counts['no_liquidity'] += 1
+            continue
+        
+        try:
+            liq_val = float(liquidity)
+            if liq_val == 0:
+                skip_counts['no_liquidity'] += 1
+                continue
+        except (ValueError, TypeError):
+            skip_counts['no_liquidity'] += 1
+            continue
+        
+        # Market passed all filters
+        filtered.append(market)
+    
+    return filtered, skip_counts
 
 
 def parse_orderbook(orderbook: dict) -> dict:
@@ -193,12 +252,46 @@ def main():
     """
     Main function to collect and save live prices.
     """
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description='Collect live prices for Polymarket markets',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        '--limit',
+        type=int,
+        default=None,
+        help='Limit the number of markets to process (useful for testing)'
+    )
+    args = parser.parse_args()
+    
     try:
         # Load markets from Script 01
-        markets = load_markets()
+        all_markets = load_markets()
         
-        # Initialize API client
-        client = PolymarketClient(rate_limit_delay=0.5)
+        # Filter markets to only include active ones with liquidity and token IDs
+        markets, skip_counts = filter_markets(all_markets)
+        
+        # Log filtering results
+        logger.info("\n📊 Market Filtering Summary:")
+        logger.info(f"  Total markets loaded: {len(all_markets)}")
+        logger.info(f"  Markets passed filter: {len(markets)}")
+        logger.info(f"  Markets skipped: {len(all_markets) - len(markets)}")
+        logger.info(f"    - Closed markets: {skip_counts['closed']}")
+        logger.info(f"    - Markets with no token IDs: {skip_counts['no_token_ids']}")
+        logger.info(f"    - Markets with no liquidity: {skip_counts['no_liquidity']}")
+        
+        # Apply limit if specified
+        if args.limit and args.limit > 0:
+            markets = markets[:args.limit]
+            logger.info(f"\n🔢 Limiting to first {args.limit} markets for processing")
+        
+        if not markets:
+            logger.warning("❌ No markets to process after filtering.")
+            sys.exit(1)
+        
+        # Initialize API client with reduced rate limit
+        client = PolymarketClient(rate_limit_delay=0.3)
         
         # Collect live prices
         live_prices = collect_live_prices(client, markets)
