@@ -34,7 +34,10 @@ def setup_database():
         
         # Create sequences FIRST (before tables that reference them)
         logger.info("Creating sequences...")
+        conn.execute('CREATE SEQUENCE IF NOT EXISTS seq_markets START 1')
+        conn.execute('CREATE SEQUENCE IF NOT EXISTS seq_live_prices START 1')
         conn.execute('CREATE SEQUENCE IF NOT EXISTS seq_price_history START 1')
+        conn.execute('CREATE SEQUENCE IF NOT EXISTS seq_outcomes START 1')
         conn.execute('CREATE SEQUENCE IF NOT EXISTS seq_edges START 1')
         logger.info("  ✅ Sequences created")
         
@@ -44,7 +47,7 @@ def setup_database():
         # 1. Markets table - stores market metadata from Script 01
         conn.execute("""
             CREATE TABLE IF NOT EXISTS markets (
-                id INTEGER PRIMARY KEY DEFAULT nextval('seq_price_history'),
+                id INTEGER PRIMARY KEY DEFAULT nextval('seq_markets'),
                 market_id VARCHAR NOT NULL UNIQUE,
                 question VARCHAR,
                 outcomes VARCHAR,
@@ -66,7 +69,7 @@ def setup_database():
         # 2. Live prices table - stores current price snapshots from Script 02
         conn.execute("""
             CREATE TABLE IF NOT EXISTS live_prices (
-                id INTEGER PRIMARY KEY DEFAULT nextval('seq_price_history'),
+                id INTEGER PRIMARY KEY DEFAULT nextval('seq_live_prices'),
                 market_id VARCHAR NOT NULL,
                 question VARCHAR,
                 yes_token_id VARCHAR,
@@ -104,7 +107,7 @@ def setup_database():
         # 4. Outcomes table - stores resolved market outcomes for calibration analysis
         conn.execute("""
             CREATE TABLE IF NOT EXISTS outcomes (
-                id INTEGER PRIMARY KEY DEFAULT nextval('seq_price_history'),
+                id INTEGER PRIMARY KEY DEFAULT nextval('seq_outcomes'),
                 market_id VARCHAR NOT NULL,
                 question VARCHAR,
                 outcome VARCHAR,
