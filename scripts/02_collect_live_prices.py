@@ -70,20 +70,21 @@ def parse_orderbook(orderbook: dict) -> dict:
     
     # Get best bid (highest price someone will pay)
     if bids:
-        # Bids are typically sorted highest first, but let's be safe
+        # Filter out bids with missing or invalid prices
         try:
-            best_bid = max(float(bid.get('price', 0)) for bid in bids)
-            result['best_bid'] = best_bid
+            valid_bids = [float(bid.get('price')) for bid in bids if bid.get('price') is not None]
+            if valid_bids:
+                result['best_bid'] = max(valid_bids)
         except (ValueError, TypeError):
             pass
     
     # Get best ask (lowest price someone will sell)
     if asks:
-        # Asks are typically sorted lowest first, but let's be safe
+        # Filter out asks with missing or invalid prices
         try:
-            best_ask = min(float(ask.get('price', float('inf'))) for ask in asks)
-            if best_ask != float('inf'):
-                result['best_ask'] = best_ask
+            valid_asks = [float(ask.get('price')) for ask in asks if ask.get('price') is not None]
+            if valid_asks:
+                result['best_ask'] = min(valid_asks)
         except (ValueError, TypeError):
             pass
     

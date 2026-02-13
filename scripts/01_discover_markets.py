@@ -98,11 +98,13 @@ def fetch_all_markets(client: PolymarketClient, active_only: bool = True) -> lis
             # Build market data structure
             market_data = {
                 'question': market.get('question'),
-                'market_id': market.get('id') or market.get('conditionId'),
+                'market_id': market.get('id') if market.get('id') is not None else market.get('conditionId'),
                 'outcomes': market.get('outcomes', []),
                 'yes_token_id': yes_token_id,
                 'no_token_id': no_token_id,
-                'ending_time': market.get('end_date_iso') or market.get('endDate') or market.get('ending_time'),
+                'ending_time': (market.get('end_date_iso') if market.get('end_date_iso') is not None 
+                               else market.get('endDate') if market.get('endDate') is not None 
+                               else market.get('ending_time')),
                 'category': market.get('category', 'unknown'),
                 'tags': market.get('tags', []),
                 'state': 'closed' if market.get('closed', False) else 'active',
